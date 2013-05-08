@@ -6,6 +6,7 @@ import Network.URI
 import Network.Stream
 import Text.Regex.Posix
 import Control.Monad
+import Data.List
 import Data.Maybe
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -24,6 +25,8 @@ markVisited (CrawlInstance a b set) url = CrawlInstance a b (Set.insert url set)
 
 visitedURLs (CrawlInstance _ _ set) = Set.toList set
 
+wordlist (CrawlInstance _ wlist _) = wlist
+
 -- Regexes 
 
 regex = "<a.+href=\"([^\"]+)|<img.+src=\"([^\"]+)\"|<iframe.+src=\"([^\"]+)\"|<form.+action=\"([^\"]+)\""
@@ -36,12 +39,26 @@ findLinks html = map (concat . tail) (html =~ regex :: [[String]])
 makeHTTPRequest :: URI -> IO (String)
 makeHTTPRequest uri = simpleHTTP (mkRequest GET uri) >>= getResponseBody
 
--- Checks whether a URI is a directory.
-isDirectory :: URI -> IO (Bool)
-isDirectory uri = do http <- simpleHTTP ((mkRequest HEAD uri) :: Request String) 
-                     rsp <- getResponseCode http
-                     let (x,y,z) = rsp
-                        in do return (x == 5)
+badResponses = [404, 302]
+
+responseCodeFromXYZ (x, y, z) = x * 100 + y * 10 + z
+
+appendURIPath uri suffix = URI (uriScheme uri) (uriAuthority uri) (uriPath uri ++ suffix) "" ""
+
+-- Appends a "/" at the end of the URI if it's not present yet.
+normalizeURIDir uri = if isSuffixOf "/" (uriPath uri) 
+                      then uri
+                      else appendURIPath uri "/"
+
+-- Checks whether an URI is a directory
+
+isDirectory uri = uriExists (normalizeURIDir uri)
+
+-- Checks whether an URI exists
+uriExists :: URI -> IO (Bool)
+uriExists uri = do rsp <- simpleHTTP ((mkRequest HEAD uri) :: Request String) >>= getResponseCode
+                   let code = responseCodeFromXYZ rsp
+                    in do return (notElem code badResponses)
 
 -- Parses a list of Strings, parses them as URIs and returns those
 -- that are parsed correctly
@@ -66,19 +83,21 @@ processURI crawler uri = do links <- retrieveLinks crawler uri
                                 new_links = filterVisited c links
                                 in return (foldr (flip markVisited) c new_links, new_links)
 
-processLoop' :: CrawlInstance -> IO [URI] -> IO (CrawlInstance)
-processLoop' crawler io_lst = do 
-                                lst <- io_lst
-                                if null lst
-                                    then return crawler
-                                    else do (c, u) <- processURI crawler (head lst)
-                                            processLoop' c (return ((tail lst) ++ u))
+-- bruteforces a directory
+bruteforceDir wlist uri = filterM uriExists (map (\x -> appendURIPath uri (uriPath x)) wlist)
 
---processLoop' crawler lst = do 
---                            (c, u) <- fmap processURI (return crawler) (fmap head lst)
---                            processLoop' c (fmap ((++) (tail lst)) u)
+tryBruteforceDir crawler uri = do exists <- isDirectory uri
+                                  if exists
+                                  then bruteforceDir (wordlist crawler) uri
+                                  else return []
+                                
 
-processLoop crawler = processLoop' crawler (return [baseURI crawler])
+processLoop' :: CrawlInstance -> [URI] -> IO (CrawlInstance)
+processLoop' crawler [] = return crawler
+processLoop' crawler (x:xs) = do (c, u) <- processURI crawler x
+                                 processLoop' c (xs ++ u)
+
+processLoop crawler = processLoop' crawler ([baseURI crawler])
 
 
 
