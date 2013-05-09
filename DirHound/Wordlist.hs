@@ -1,4 +1,4 @@
-module DirHound.Wordlist() where
+module DirHound.Wordlist(readWordlist) where
 
 import Network.URI
 import Data.Maybe
