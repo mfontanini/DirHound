@@ -90,22 +90,23 @@ parseAllURIs = map fromJust . filter isJust . (map parseURIReference)
 -- Takes a list of Strings representing URIs, parsed them as such
 -- and returns a list containing those URIs, interpretted as
 -- relative to a base URI
-makeRelativeURIs :: Crawler -> [String] -> [URI]
-makeRelativeURIs crawler = map (\x -> relativeTo x (baseURI crawler)) . parseAllURIs
+makeRelativeURIs :: URI -> [String] -> [URI]
+makeRelativeURIs uri = map (\x -> relativeTo x uri) . parseAllURIs
 
 -- Takes a list of Strings representing URIs, parsed them and keeps
 -- those that actually represent a relative URI
-filterExternalURIs :: Crawler -> [String] -> [URI]
-filterExternalURIs crawler = filter ((==) (uriAuthority (baseURI crawler)) . uriAuthority) . (makeRelativeURIs crawler)
+filterExternalURIs :: URI -> [String] -> [URI]
+filterExternalURIs uri = filter ((==) (uriAuthority uri) . uriAuthority) . (makeRelativeURIs uri)
 
--- Makes a request to the given URI, taking "base" as the base URI
-retrieveLinks :: Crawler -> URI -> IO [URI]
-retrieveLinks crawler uri = fmap (filterExternalURIs crawler) (fmap findLinks (makeHTTPRequest uri))
+-- Makes a request to the given URI, retrieves the links and filters 
+-- those than don't belong to the domain being crawled.
+retrieveLinks :: URI -> IO [URI]
+retrieveLinks uri = fmap (filterExternalURIs uri . findLinks) (makeHTTPRequest uri)
 
 -- Processes an URI, marking it as visited.
 -- Returns a tuple IO (CrawlInstance, [URI])
 processURI :: Crawler -> URI -> IO (Crawler, [URI])
-processURI crawler uri = do links <- retrieveLinks crawler uri
+processURI crawler uri = do links <- retrieveLinks uri
                             let c = markVisited crawler uri
                                 new_links = filterVisited c links
                                 in return (foldr (flip markVisited) c new_links, new_links)
@@ -120,18 +121,21 @@ tryBruteforceDir crawler uri = do exists <- isDirectory uri
                                   then bruteforceDir (wordlist crawler) uri
                                   else return []
 
+performBruteforce' :: Crawler -> URI -> IO (Crawler, [URI])
 performBruteforce' crawler uri = if isDirVisited crawler uri
                                  then return (crawler, [])
                                  else do
                                       uris <- tryBruteforceDir crawler uri
                                       return (foldr (flip markDirVisited) crawler uris, uris)
 
+performBruteforce :: Crawler -> URI -> IO (Crawler, [URI])
 performBruteforce crawler uri = do 
                                     isDir <- isDirectory uri
                                     if isDir
-                                    then performBruteforce' crawler (dirnameURI uri)
-                                    else performBruteforce' crawler uri
-                                    
+                                    then performBruteforce' crawler uri
+                                    else performBruteforce' crawler (dirnameURI uri)
+
+printFoundURIs :: [URI] -> IO ()
 printFoundURIs [] = return ()
 printFoundURIs (x:xs) = let x' = show x
                             in do y <- putStrLn ("[+] " ++ x')
@@ -147,14 +151,9 @@ processLoop' crawler (x:xs) = do
                                     in do 
                                           printFoundURIs u'
                                           (c'', u'') <- processURI c' x
-                                          processLoop' c'' (xs ++ u'')
+                                          processLoop' c'' (xs ++ u' ++ u'')
 
 processLoop :: Crawler -> IO (Crawler)
 processLoop crawler = processLoop' crawler ([baseURI crawler])
 
-
-
-doTestMe = case parseURI "http://www2.cert.unlp.edu.ar/" of 
-            Just x -> processLoop (makeCrawler x [])
-            
 
