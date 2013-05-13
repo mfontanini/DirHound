@@ -11,6 +11,7 @@ import Data.Maybe
 import Data.Set (Set)
 import qualified Data.Set as Set
 import DirHound.Wordlist
+import System.IO  
 
 -- Crawler data
 
@@ -135,25 +136,26 @@ performBruteforce crawler uri = do
                                     then performBruteforce' crawler uri
                                     else performBruteforce' crawler (dirnameURI uri)
 
-printFoundURIs :: [URI] -> IO ()
-printFoundURIs [] = return ()
-printFoundURIs (x:xs) = let x' = show x
-                            in do y <- putStrLn ("[+] " ++ x')
-                                  printFoundURIs xs
+printFoundURIs :: Handle -> [URI] -> IO ()
+printFoundURIs _ [] = return ()
+printFoundURIs log (x:xs) = let x' = show x
+                                in do 
+                                      hPutStrLn log ("[+] Path exists: " ++ x')
+                                      putStrLn ("[+] " ++ x')
+                                      printFoundURIs log xs
 
-processLoop' :: Crawler -> [URI] -> IO (Crawler)
-processLoop' crawler [] = return crawler
-processLoop' crawler (x:xs) = do 
+processLoop' :: Crawler -> Handle -> [URI] -> IO ()
+processLoop' _ _ [] = return ()
+processLoop' crawler log (x:xs) = do 
                                  putStrLn (show x)
+                                 hPutStrLn log (show x)
                                  (c, u) <- performBruteforce crawler x
                                  let u' = filterVisited c u
                                      c' = foldr (flip markVisited) c u'
                                     in do 
-                                          printFoundURIs u'
+                                          printFoundURIs log u'
                                           (c'', u'') <- processURI c' x
-                                          processLoop' c'' (xs ++ u' ++ u'')
+                                          processLoop' c'' log (xs ++ u' ++ u'')
 
-processLoop :: Crawler -> IO (Crawler)
-processLoop crawler = processLoop' crawler ([baseURI crawler])
-
-
+processLoop :: Crawler -> Handle -> IO ()
+processLoop crawler log = processLoop' crawler log ([baseURI crawler])
