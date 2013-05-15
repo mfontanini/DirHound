@@ -12,7 +12,7 @@ DirHound requires a base URL which will be the start point of the
 crawling session:
 
 ```Shell
-./DirHound http://www.example.com
+./dirhound http://www.example.com
 ```
 
 ### Wordlist ###
@@ -35,7 +35,7 @@ and file names. If you want to provide your own wordlist, you can use
 the *-w* parameter:
 
 ```Shell
-./DirHound -w /some/path/wordlist http://www.example.com
+./dirhound -w /some/path/wordlist http://www.example.com
 ```
 
 ### Output ###
@@ -46,5 +46,16 @@ output will be stored in a file named *dirhound.out* but you can provide
 your own path: 
 
 ```Shell
-./DirHound -o /tmp/my_crawl_status http://www.example.com
+./dirhound -o /tmp/my_crawl_status http://www.example.com
 ```
+
+## Compiling ##
+
+The easiest way to compile DirHound is to use cabal:
+
+```Shell
+cabal configure
+cabal build
+```
+
+The generated executable will be stored in *./dist/build/dirhound/dirhound*.
