@@ -49,6 +49,15 @@ your own path:
 ./dirhound -o /tmp/my_crawl_status http://www.example.com
 ```
 
+### Disabling bruteforce ###
+
+Sometimes, you might just want to crawl a website and disable the 
+bruteforcing feature. You can do this by using the *-d* switch:
+
+```Shell
+./dirhound -d http://www.example.com
+```
+
 ## Compiling ##
 
 The easiest way to compile DirHound is to use cabal:

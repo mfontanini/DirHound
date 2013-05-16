@@ -22,21 +22,23 @@ import System.IO
 data Args = Args {
                 wordlist :: String,
                 url :: String,
-                outfile :: String
+                outfile :: String,
+                disable_bruteforce :: Bool
             }
             deriving (Show, Data, Typeable)
 
 
-arguments = Args{wordlist = "wordlist" &= typFile,
+arguments = Args{wordlist = "wordlist" &= typFile &= help "The wordlist to use",
                 url = def &= args &= typ "URL",
-                outfile = "dirhound.out" &= typFile
+                outfile = "dirhound.out" &= typFile &= help "Output file",
+                disable_bruteforce = False &= help "Don't bruteforce, only crawl"
                 } &= program "DirHound" &= summary "DirHound web server directory bruteforcer"
 
 main = do
         parsed <- cmdArgs arguments
         let wordlist_name = wordlist parsed
             uri = url parsed
-            in do wlist <- readWordlist wordlist_name
+            in do wlist <- if disable_bruteforce parsed then return [] else readWordlist wordlist_name
                   hfile <- openFile (outfile parsed) WriteMode
                   case parseURI uri of 
                     Just x -> processLoop (makeCrawler x wlist) hfile

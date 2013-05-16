@@ -23,4 +23,5 @@ makeURIList all = let x = map parseURIReference all
                         0 -> map fromJust x
                         _ -> error "Invalid URL in file" 
 
-readWordlist path = fmap makeURIList (fmap lines (readFile path))
+readWordlist :: String -> IO [URI]
+readWordlist path = fmap makeURIList (fmap (filter (not . null) . lines) (readFile path))
