@@ -1,1 +1,8 @@
 admin/
+phpmyadmin/
+panel/
+backend/
+admin.php
+login.php
+panel.php
+backend.php

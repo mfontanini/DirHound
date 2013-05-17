@@ -29,7 +29,7 @@ data Args = Args {
 
 
 arguments = Args{wordlist = "wordlist" &= typFile &= help "The wordlist to use",
-                url = def &= args &= typ "URL",
+                url = def &= argPos 0 &= typ "URL",
                 outfile = "dirhound.out" &= typFile &= help "Output file",
                 disable_bruteforce = False &= help "Don't bruteforce, only crawl"
                 } &= program "DirHound" &= summary "DirHound web server directory bruteforcer"
