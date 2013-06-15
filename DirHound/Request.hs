@@ -30,23 +30,21 @@ import System.IO
 
 -- Crawler data
 
-data Crawler = Crawler URI [URI] (Set URI) (Set URI)
+data Crawler = Crawler URI [URI] (Set URI)
 
-baseURI (Crawler base _ _ _) = base
+baseURI (Crawler base _ _) = base
 
-makeCrawler base wordlist = Crawler base wordlist Set.empty Set.empty
+makeCrawler base wordlist = Crawler base wordlist Set.empty
 
-filterVisited (Crawler _ _ set _) urls = Set.toList (Set.difference (Set.fromList urls) set)
+filterVisited (Crawler _ _ set) urls = Set.toList (Set.difference (Set.fromList urls) set)
 
-markVisited (Crawler a b set c) uri = Crawler a b (Set.insert uri set) c
+markVisited (Crawler a b set) uri = Crawler a b (Set.insert uri set)
 
-visitedURLs (Crawler _ _ set _) = Set.toList set
+visitedURLs (Crawler _ _ set) = Set.toList set
 
-wordlist (Crawler _ wlist _ _) = wlist
+wordlist (Crawler _ wlist _) = wlist
 
-markDirVisited (Crawler a b c set) uri = Crawler a b c (Set.insert uri set)
-
-isDirVisited (Crawler _ _ _ set) uri = Set.member uri set
+isVisited (Crawler _ _ set) uri = Set.member uri set
 
 
 -- Regexes 
@@ -74,9 +72,10 @@ replaceURIPath uri path = URI (uriScheme uri) (uriAuthority uri) path "" ""
 
 -- Appends a "/" at the end of the URI if it's not present yet.
 normalizeURIDir :: URI -> URI
-normalizeURIDir uri = if isSuffixOf "/" (uriPath uri) 
-                      then uri
-                      else appendURIPath uri "/"
+normalizeURIDir uri = 
+    if isSuffixOf "/" (uriPath uri) 
+    then uri
+    else appendURIPath uri "/"
 
 -- Checks whether an URI is a directory
 
@@ -85,15 +84,17 @@ isDirectory uri = uriExists (normalizeURIDir uri)
 
 -- Checks whether an URI exists
 uriExists :: URI -> IO (Bool)
-uriExists uri = do rsp <- simpleHTTP ((mkRequest HEAD uri) :: Request String) >>= getResponseCode
-                   let code = responseCodeFromXYZ rsp
-                    in do return (notElem code badResponses)
+uriExists uri = do 
+    rsp <- simpleHTTP ((mkRequest HEAD uri) :: Request String) >>= getResponseCode
+    let code = responseCodeFromXYZ rsp
+        in return (notElem code badResponses)
 
 -- Retrieves the base dir name
 
-dirnameURI' path = case elemIndices '/' path
-                    of (x:xs) -> fst (splitAt (last (x:xs) + 1) path)
-                       [] -> "/"
+dirnameURI' path = 
+    case elemIndices '/' path
+    of (x:xs) -> fst (splitAt (last (x:xs) + 1) path)
+       [] -> "/"
 
 dirnameURI :: URI -> URI
 dirnameURI uri = replaceURIPath uri (dirnameURI' (uriPath uri))
@@ -122,55 +123,59 @@ retrieveLinks uri = fmap (filterExternalURIs uri . findLinks) (makeHTTPRequest u
 -- Processes an URI, marking it as visited.
 -- Returns a tuple IO (CrawlInstance, [URI])
 processURI :: Crawler -> URI -> IO (Crawler, [URI])
-processURI crawler uri = do links <- retrieveLinks uri
-                            let c = markVisited crawler uri
-                                new_links = filterVisited c links
-                                in return (foldr (flip markVisited) c new_links, new_links)
+processURI crawler uri = do 
+    links <- retrieveLinks uri
+    let c = markVisited crawler uri
+        new_links = filterVisited c links
+        in return (foldr (flip markVisited) c new_links, new_links)
 
 -- bruteforces a directory
 bruteforceDir :: [URI] -> URI -> IO [URI]
 bruteforceDir wlist uri = filterM uriExists (map (\x -> appendURIPath uri (uriPath x)) wlist)
 
 tryBruteforceDir :: Crawler -> URI -> IO [URI]
-tryBruteforceDir crawler uri = do exists <- isDirectory uri
-                                  if exists
-                                    then bruteforceDir (wordlist crawler) uri
-                                    else return []
+tryBruteforceDir crawler uri = do 
+    exists <- isDirectory uri
+    if exists
+        then bruteforceDir (wordlist crawler) uri
+        else return []
 
 performBruteforce' :: Crawler -> URI -> IO (Crawler, [URI])
-performBruteforce' crawler uri = if isDirVisited crawler uri
-                                 then return (crawler, [])
-                                 else do
-                                      uris <- tryBruteforceDir crawler uri
-                                      return (foldr (flip markDirVisited) crawler uris, uris)
+performBruteforce' crawler uri = 
+    if isVisited crawler uri
+    then return (crawler, [])
+    else do
+        uris <- tryBruteforceDir crawler uri
+        return (crawler, uris)
 
 performBruteforce :: Crawler -> URI -> IO (Crawler, [URI])
 performBruteforce crawler uri = do 
-                                    isDir <- isDirectory uri
-                                    if isDir
-                                        then performBruteforce' crawler uri
-                                        else performBruteforce' crawler (dirnameURI uri)
+    isDir <- isDirectory uri
+    if isDir
+        then performBruteforce' crawler uri
+        else performBruteforce' crawler (dirnameURI uri)
 
 printFoundURIs :: Handle -> [URI] -> IO ()
 printFoundURIs _ [] = return ()
-printFoundURIs log (x:xs) = let x' = show x
-                                in do 
-                                      hPutStrLn log ("[+] Path exists: " ++ x')
-                                      putStrLn ("[+] " ++ x')
-                                      printFoundURIs log xs
+printFoundURIs log (x:xs) = 
+    let x' = show x
+    in do 
+          hPutStrLn log ("[+] Path exists: " ++ x')
+          putStrLn ("[+] " ++ x')
+          printFoundURIs log xs
 
 processLoop' :: Crawler -> Handle -> [URI] -> IO ()
 processLoop' _ _ [] = return ()
 processLoop' crawler log (x:xs) = do 
-                                 putStrLn (show x)
-                                 hPutStrLn log (show x)
-                                 (c, u) <- performBruteforce crawler x
-                                 let u' = filterVisited c u
-                                     c' = foldr (flip markVisited) c u'
-                                    in do 
-                                          printFoundURIs log u'
-                                          (c'', u'') <- processURI c' x
-                                          processLoop' c'' log (xs ++ u' ++ u'')
+    putStrLn (show x)
+    hPutStrLn log (show x)
+    (c, u) <- performBruteforce crawler x
+    let u' = filterVisited c u
+        c' = foldr (flip markVisited) c u'
+       in do 
+             printFoundURIs log u'
+             (c'', u'') <- processURI c' x
+             processLoop' c'' log (xs ++ u' ++ u'')
 
 processLoop :: Crawler -> Handle -> IO ()
 processLoop crawler log = processLoop' crawler log ([baseURI crawler])
